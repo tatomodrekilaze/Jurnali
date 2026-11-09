@@ -114,6 +114,24 @@ So **attendance can't be entered ahead of time**. A lesson opens when it starts.
 | `MOVED_PUPIL_ATTENDANCE_ERROR` | Pupil moved to another school |
 | `PUPIL_IS_EXAM_RESTORATION_PARTICIPANT` | Pupil is registered for a make-up exam |
 
+## Hints
+
+After a day is on screen, Jurnali asks for the same class groups over the previous four weeks.
+`gradebook/classgroup/{id}/week` takes any `startDate`/`endDate`, so that is one request per group
+(about a second). A pupil counts as absent on a day if they missed any of this teacher's lessons
+that day. From that:
+
+| Hint | Rule |
+|---|---|
+| გუშინ / პარასკევს აკლდა | absent on the last school day |
+| ბოლო 2 დღე აკლდა | absent on the last two |
+| ⚠ N დღეა ზედიზედ აკლია | absent on the last 3 or more in a row |
+| ორშაბათობით ხშირად აკლია | this weekday came up 3+ times and they missed at least 3 of them, 75% or more |
+| ⚠ ბოლო 4 კვირაში N დღე აკლდა | 8+ school days, 5+ missed, 30% or more |
+| reminder card | a past day with lessons, nobody marked absent, and 0 to 2 days before it locks |
+
+All of it runs in the page; nothing leaves the device and no hint changes a mark.
+
 ## Excused absences (საპატიო გაცდენები)
 
 Separate records covering a date range, entered by the homeroom teacher:
