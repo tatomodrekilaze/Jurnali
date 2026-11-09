@@ -391,8 +391,9 @@
       week.forEach((l) => expectFields(l, f.lesson, "journal lesson"));
 
       for (const slot of slots) {
-        const cls = classes.get(slot.classKey) || { key: slot.classKey, lessons: [], names: new Map() };
+        const cls = classes.get(slot.classKey) || { key: slot.classKey, lessons: [], names: new Map(), groupIds: new Set() };
         classes.set(slot.classKey, cls);
+        cls.groupIds.add(classGroupId);
 
         const match = week.find(
           (l) => String(l.startDateTime).startsWith(dateStr) && timeOf(l.startDateTime) === slot.start,
@@ -428,6 +429,7 @@
       classes: [...classes.values()]
         .map((c) => ({
           key: c.key,
+          groupIds: [...c.groupIds],
           lessons: c.lessons.sort((a, b) => a.startsAt - b.startsAt),
           pupils: [...c.names].map(([id, name]) => ({ id, name })).sort((a, b) => byGeorgian(a.name, b.name)),
         }))
@@ -440,6 +442,113 @@
   const canEdit = (lesson, pupilId) => Boolean(record(lesson, pupilId)?.editable);
   // An absence can't be added on top of a grade; removing one is always fine.
   const canMarkAbsent = (lesson, pupilId) => canEdit(lesson, pupilId) && !record(lesson, pupilId).graded;
+
+  // --- hints -----------------------------------------------------------------
+  //
+  // Plain rules over the last few weeks of this class's journal, worked out on the
+  // device. Each one says why it showed up, and none of them ever marks anybody:
+  // they point things out, the teacher decides.
+
+  const HISTORY_WEEKS = 4;
+  const historyLoads = new Map(); // "1ბ|09/11/2026" -> Promise
+  const histories = new Map(); // same key -> [{ date, roster:Set, absent:Set }], oldest first
+
+  const historyKey = (cls, date) => `${cls.key}|${formatDate(date)}`;
+
+  // School days before `anchor`, each with who was on the list and who missed at
+  // least one of this teacher's lessons that day.
+  async function loadHistory(cls, anchor) {
+    const before = startOfDay(anchor);
+    const dates = Array.from({ length: HISTORY_WEEKS + 1 }, (_, k) => formatDate(addDays(before, -7 * k)));
+    const weeks = await Promise.all(
+      cls.groupIds.flatMap((classGroupId) =>
+        dates.map((date) => request("GET", fillPath(config.paths.week, { classGroupId, date })).catch(() => [])),
+      ),
+    );
+    const seen = new Set();
+    const days = new Map();
+    for (const week of weeks) {
+      if (!Array.isArray(week)) continue;
+      for (const l of week) {
+        if (!l || l.lessonId == null || seen.has(l.lessonId)) continue;
+        seen.add(l.lessonId);
+        const at = parseDateTime(l.startDateTime);
+        if (!at || at >= before) continue;
+        const key = formatDate(at);
+        const day = days.get(key) || { date: startOfDay(at), roster: new Set(), absent: new Set() };
+        days.set(key, day);
+        for (const p of Array.isArray(l.pupil) ? l.pupil : []) {
+          if (p.notInClass) continue;
+          day.roster.add(p.pupilId);
+          if (!p.present) day.absent.add(p.pupilId);
+        }
+      }
+    }
+    return [...days.values()].filter((d) => d.roster.size).sort((a, b) => a.date - b.date);
+  }
+
+  // Fetched after the day is on screen, so hints never slow the teacher down.
+  function loadHints() {
+    const cls = currentClass();
+    if (!cls) return;
+    const key = historyKey(cls, state.date);
+    if (historyLoads.has(key)) return;
+    historyLoads.set(
+      key,
+      loadHistory(cls, state.date)
+        .catch(() => [])
+        .then((days) => {
+          histories.set(key, days);
+          if (state.open && currentClass() && historyKey(currentClass(), state.date) === key) render();
+        }),
+    );
+  }
+
+  function forgetHistory() {
+    historyLoads.clear();
+    histories.clear();
+  }
+
+  const onDay = (d) => WEEKDAYS[d.getDay()] + "ს"; // ორშაბათს
+  const onEvery = (d) => WEEKDAYS[d.getDay()] + "ობით"; // ორშაბათობით
+
+  function pupilHints(days, pupilId, anchor) {
+    const mine = days.filter((d) => d.roster.has(pupilId));
+    const notes = [];
+    let alert = null;
+    if (!mine.length) return { notes, alert };
+
+    let streak = 0;
+    for (let i = mine.length - 1; i >= 0 && mine[i].absent.has(pupilId); i--) streak++;
+    const last = mine[mine.length - 1].date;
+
+    if (streak >= 3) alert = `${streak} დღეა ზედიზედ აკლია`;
+    else if (streak === 2) notes.push("ბოლო 2 დღე აკლდა");
+    else if (streak === 1) notes.push(sameDay(last, addDays(anchor, -1)) ? "გუშინ აკლდა" : `${onDay(last)} აკლდა`);
+
+    // Same weekday missed again and again: a club, a doctor, a parent's schedule.
+    const sameWeekday = mine.filter((d) => d.date.getDay() === anchor.getDay());
+    const missedThen = sameWeekday.filter((d) => d.absent.has(pupilId)).length;
+    if (sameWeekday.length >= 3 && missedThen >= 3 && missedThen / sameWeekday.length >= 0.75) {
+      notes.push(`${onEvery(anchor)} ხშირად აკლია`);
+    }
+
+    const missed = mine.filter((d) => d.absent.has(pupilId)).length;
+    if (!alert && mine.length >= 8 && missed >= 5 && missed / mine.length >= 0.3) {
+      alert = `ბოლო ${HISTORY_WEEKS} კვირაში ${missed} დღე აკლდა`;
+    }
+    return { notes, alert };
+  }
+
+  // Days where nobody is marked absent and the lock is close. Usually that's a day
+  // that hasn't been filled in yet, which is exactly the Friday catch-up risk.
+  function unfilledDays(days) {
+    const today = startOfDay(new Date());
+    return days
+      .filter((d) => d.absent.size === 0 && d.date < today)
+      .map((d) => ({ date: d.date, left: editDaysFor("other") - Math.round((today - d.date) / DAY_MS) }))
+      .filter((d) => d.left >= 0 && d.left <= 2);
+  }
 
   // --- state -----------------------------------------------------------------
 
@@ -527,6 +636,7 @@
     state.excluded.clear();
     state.results.clear();
     state.confirming = false;
+    loadHints();
   }
 
   // Ordinary lessons decide how far back the teacher can go; summary exams stay open
@@ -633,6 +743,8 @@
         state.results.set(key, { ok: Boolean(ok) && !failures.has(key), reason: failures.get(key) });
       }
       state.overrides.clear();
+      forgetHistory(); // a past day may have changed, and with it the streaks
+      loadHints();
     } catch (e) {
       state.error = { text: "ჩაწერა დასრულდა, მაგრამ ვერ შევამოწმე. ნახეთ საიტზე, ჩაიწერა თუ არა.", retry: true };
     }
@@ -727,6 +839,10 @@
     .num { font-size: 13px; color: #5f6d66; font-variant-numeric: tabular-nums; }
     .who { display: grid; gap: 2px; min-width: 0; }
     .note { font-size: 13px; color: #5f6d66; }
+    .note.alert { font-weight: 700; color: #b7791f; }
+    .remind { display: block; width: 100%; margin: 8px 0; padding: 12px 14px; border: 1px solid #f0d9a8; border-radius: 12px; background: #fbefd9; color: #1d2a24; font-size: 15px; line-height: 1.5; text-align: left; }
+    .remind b { display: block; }
+    .remind u { font-weight: 700; color: #b7791f; }
     .tag { padding: 6px 12px; border-radius: 999px; background: #dfeae4; color: #2f5d4e; font-size: 14px; font-weight: 600; white-space: nowrap; }
     .pupil.absent { background: #f8e1da; }
     .pupil.absent .tag { background: #c4472f; color: #fff; }
@@ -781,14 +897,21 @@
     const views = cls.pupils.map((p) => [p, pupilView(cls, p.id)]);
     const absent = views.filter(([, v]) => v.status === "absent").length;
     const tags = { absent: "აკლია", present: "ესწრება", mixed: "ზოგან აკლია" };
+    const days = histories.get(historyKey(cls, state.date)) || [];
     const rows = views.map(([p, v], i) => {
+      const hints = pupilHints(days, p.id, state.date);
       const notes = [];
       if (v.carried) notes.push("წინა გაკვეთილზეც აკლდა");
       if (v.graded) notes.push("ნიშანი უწერია");
+      notes.push(...hints.notes);
+      const lines = [
+        hints.alert ? `<span class="note alert">⚠ ${hints.alert}</span>` : "",
+        notes.length ? `<span class="note">${notes.join(" · ")}</span>` : "",
+      ].join("");
       const tag = v.status === "absent" && v.excused ? "საპატიო" : tags[v.status];
       return `<button class="pupil ${v.status}" data-action="pupil" data-id="${p.id}" ${editable ? "" : "disabled"}>
         <span class="num">${pad2(i + 1)}</span>
-        <span class="who"><span>${escapeHtml(p.name)}</span>${notes.length ? `<span class="note">${notes.join(" · ")}</span>` : ""}</span>
+        <span class="who"><span>${escapeHtml(p.name)}</span>${lines}</span>
         <span class="tag">${tag}</span>
       </button>`;
     });
@@ -822,7 +945,21 @@
     } else if (upcoming) {
       info = `<div class="info">ვინც დღეს აკლია, მომდევნო გაკვეთილზეც მონიშნული დაგხვდებათ. დარჩა ${upcoming} გაკვეთილი.</div>`;
     }
-    return `<div class="label">სად ჩაიწეროს</div><div class="lessons">${cls.lessons.map(viewLesson).join("")}</div>${info}${viewPupils(cls)}`;
+    return `${viewReminders(cls)}<div class="label">სად ჩაიწეროს</div><div class="lessons">${cls.lessons.map(viewLesson).join("")}</div>${info}${viewPupils(cls)}`;
+  }
+
+  // Only on today's screen: a nudge for a day that's about to lock with nobody marked.
+  function viewReminders(cls) {
+    if (!sameDay(state.date, new Date())) return "";
+    const days = histories.get(historyKey(cls, state.date)) || [];
+    return unfilledDays(days)
+      .map(({ date, left }) => {
+        const when = left === 0 ? "შევსება მხოლოდ დღეს შეიძლება" : `შევსება კიდევ ${left + 1} დღე შეიძლება`;
+        return `<button class="remind" data-action="day" data-time="${date.getTime()}">
+          <b>${escapeHtml(onDay(date))} (${date.getDate()} ${MONTHS[date.getMonth()]}) ${escapeHtml(cls.key)}-ში არავის აკლია.</b>
+          თუ ჯერ არ შეგივსიათ, ${when}. <u>გადასვლა</u></button>`;
+      })
+      .join("");
   }
 
   function viewConfirm() {
