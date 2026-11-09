@@ -61,6 +61,10 @@
 
   const pad2 = (n) => String(n).padStart(2, "0");
   const formatDate = (d) => `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+  // Browsers don't reliably ship Georgian locale data, so no toLocaleDateString here.
+  const WEEKDAYS = ["კვირა", "ორშაბათი", "სამშაბათი", "ოთხშაბათი", "ხუთშაბათი", "პარასკევი", "შაბათი"];
+  const MONTHS = ["იანვარი", "თებერვალი", "მარტი", "აპრილი", "მაისი", "ივნისი", "ივლისი", "აგვისტო", "სექტემბერი", "ოქტომბერი", "ნოემბერი", "დეკემბერი"];
+  const longDate = (d) => `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
   const timeOf = (s) => (String(s || "").match(/\d{2}:\d{2}/) || [""])[0];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const escapeHtml = (s) =>
@@ -404,7 +408,8 @@
     .notice small { display: block; margin-top: 6px; font-size: 11px; color: #5f6d66; word-break: break-word; }
     .empty { padding: 30px 6px; text-align: center; font-size: 15px; line-height: 1.6; color: #5f6d66; }
 
-    .confirm { display: grid; gap: 8px; margin-top: 12px; padding: 14px; border: 1px solid #d6ddd6; border-radius: 14px; font-size: 14px; line-height: 1.5; }
+    .confirm { display: grid; gap: 10px; padding: 14px; border: 1px solid #d6ddd6; border-radius: 16px; background: #fbfcf9; box-shadow: 0 -6px 20px rgba(0, 0, 0, .08); font-size: 15px; line-height: 1.5; }
+    .confirm p { margin: 0; }
     .confirm .buttons { display: flex; gap: 8px; }
     .confirm button { flex: 1; padding: 12px; border: 1px solid #d6ddd6; border-radius: 12px; background: none; font-size: 15px; font-weight: 700; }
     .confirm .go { background: #c4472f; border-color: #c4472f; color: #fff; }
@@ -449,7 +454,7 @@
     const marks = writes.filter((w) => w.method === "POST").length;
     const unmarks = writes.length - marks;
     return `<div class="confirm">
-      ჟურნალში ჩაიწერება: <b>${marks}</b> გაცდენა${unmarks ? `, <b>${unmarks}</b> გაცდენის მოხსნა` : ""}, ${state.selectedLessons.size} გაკვეთილში.
+      <p>ჟურნალში ჩაიწერება: <b>${marks}</b> გაცდენა${unmarks ? `, <b>${unmarks}</b> გაცდენის მოხსნა` : ""}, ${state.selectedLessons.size} გაკვეთილში.</p>
       <div class="buttons"><button data-action="cancel">გაუქმება</button><button class="go" data-action="confirm">დიახ, შენახვა</button></div>
     </div>`;
   }
@@ -466,15 +471,16 @@
     if (state.error) return `<div class="notice"><b>შეცდომა.</b> ${escapeHtml(state.error)}</div>`;
     if (state.holiday) return `<div class="empty">დღეს დასვენების დღეა.</div>`;
     if (!cls) return `<div class="empty">დღეს გაკვეთილები არ გაქვთ.</div>`;
-    return viewLessons(cls) + viewPupils(cls) + (state.confirming ? viewConfirm() : "");
+    return viewLessons(cls) + viewPupils(cls);
   }
 
   function viewFooter(cls) {
     if (!cls || state.loading || state.error || state.apiChanged || config.disabled) return "";
+    if (state.confirming) return `<div class="footer">${viewConfirm()}</div>`;
     const n = pendingWrites().length;
     const label = state.saving ? "ინახება…" : n ? `შენახვა (${n} ცვლილება)` : "ცვლილება არ არის";
     return `<div class="footer">
-      <button class="save" data-action="save" ${state.saving || state.confirming || !n ? "disabled" : ""}>${label}</button>
+      <button class="save" data-action="save" ${state.saving || !n ? "disabled" : ""}>${label}</button>
       <div class="hint">დანარჩენები ჟურნალში უკვე „კი“-ზეა</div>
     </div>`;
   }
@@ -487,7 +493,7 @@
     }
 
     const cls = currentClass();
-    const today = new Date().toLocaleDateString("ka-GE", { weekday: "long", day: "numeric", month: "long" });
+    const today = longDate(new Date());
     const broken = state.apiChanged || config.disabled;
     const scroll = root.querySelector(".body")?.scrollTop || 0;
 
