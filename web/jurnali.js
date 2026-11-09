@@ -27,6 +27,7 @@
     paths: {
       schedule: "dashboard/schedule?date={date}",
       week: "gradebook/classgroup/{classGroupId}/week?accessAs=TEACHER&startDate={date}&endDate={date}",
+      history: "gradebook/classgroup/{classGroupId}/week?accessAs=TEACHER&startDate={from}&endDate={to}",
       absence: "gradebook/{lessonId}/pupils/{pupilId}/absence",
       editWindow: "gradebook/definitiveassessment/thresholddays",
     },
@@ -459,11 +460,11 @@
   // least one of this teacher's lessons that day.
   async function loadHistory(cls, anchor) {
     const before = startOfDay(anchor);
-    const dates = Array.from({ length: HISTORY_WEEKS + 1 }, (_, k) => formatDate(addDays(before, -7 * k)));
+    // Despite its name the journal endpoint takes any date range, so one request per
+    // class group covers the whole stretch.
+    const range = { from: formatDate(addDays(before, -7 * HISTORY_WEEKS)), to: formatDate(addDays(before, -1)) };
     const weeks = await Promise.all(
-      cls.groupIds.flatMap((classGroupId) =>
-        dates.map((date) => request("GET", fillPath(config.paths.week, { classGroupId, date })).catch(() => [])),
-      ),
+      cls.groupIds.map((classGroupId) => request("GET", fillPath(config.paths.history, { classGroupId, ...range })).catch(() => [])),
     );
     const seen = new Set();
     const days = new Map();
@@ -509,8 +510,9 @@
     histories.clear();
   }
 
-  const onDay = (d) => WEEKDAYS[d.getDay()] + "ს"; // ორშაბათს
-  const onEvery = (d) => WEEKDAYS[d.getDay()] + "ობით"; // ორშაბათობით
+  const stem = (d) => WEEKDAYS[d.getDay()].replace(/ი$/, ""); // ორშაბათი -> ორშაბათ, კვირა stays
+  const onDay = (d) => stem(d) + "ს"; // ორშაბათს, კვირას
+  const onEvery = (d) => stem(d) + "ობით"; // ორშაბათობით, კვირაობით
 
   function pupilHints(days, pupilId, anchor) {
     const mine = days.filter((d) => d.roster.has(pupilId));
