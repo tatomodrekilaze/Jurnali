@@ -94,8 +94,11 @@ The official app checks this before letting the toggle work (`checkIfShowAddAsse
 now >= lesson start   AND   round((now - lesson start) / 1 day) <= thresholdDays[lessonType]
 ```
 
-`thresholdDays` comes from `GET gradebook/definitiveassessment/thresholddays`, keyed by lesson type
-with an `other` fallback. Outside that window, edits only go through if a correction request was
+`thresholdDays` comes from `GET gradebook/definitiveassessment/thresholddays`. The response is
+`{daysAfterLesson, daysAfterSummary, daysAfterSummaryRestore}` (8, 360 and 11 at the time of
+writing); the official app maps it to `{SUMMARY_EXAM, SUMMARY_EXAM_RESTORATION, other}` before
+the lookup. Eight days is enough for the common habit of noting absences on paper during the
+week and entering them all on Friday, which is why Jurnali shows the week's days as buttons. Outside that window, edits only go through if a correction request was
 approved (`GET gradebook/classgroup/{id}/gradecorrection/active`).
 
 So **attendance can't be entered ahead of time**. A lesson opens when it starts.

@@ -89,7 +89,8 @@
   // Browsers don't reliably ship Georgian locale data, so no toLocaleDateString here.
   const WEEKDAYS = ["კვირა", "ორშაბათი", "სამშაბათი", "ოთხშაბათი", "ხუთშაბათი", "პარასკევი", "შაბათი"];
   const MONTHS = ["იანვარი", "თებერვალი", "მარტი", "აპრილი", "მაისი", "ივნისი", "ივლისი", "აგვისტო", "სექტემბერი", "ოქტომბერი", "ნოემბერი", "დეკემბერი"];
-  const longDate = (d) => `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  const SHORT_WEEKDAYS = ["კვ", "ორშ", "სამ", "ოთხ", "ხუთ", "პარ", "შაბ"];
+  const longDate =(d) => `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 
   // Error codes the API returns on 409, with the wording the official site uses.
   const SERVER_ERRORS = {
@@ -323,8 +324,13 @@
   async function loadEditWindow() {
     if (editWindow) return;
     try {
-      const data = await request("GET", config.paths.editWindow);
-      editWindow = data && typeof data === "object" ? data : {};
+      const data = (await request("GET", config.paths.editWindow)) || {};
+      // Same mapping the official journal does: lesson type -> days it stays editable.
+      editWindow = {
+        SUMMARY_EXAM: data.daysAfterSummary,
+        SUMMARY_EXAM_RESTORATION: data.daysAfterSummaryRestore,
+        other: data.daysAfterLesson,
+      };
     } catch (e) {
       if (e instanceof NotLoggedIn) throw e;
       editWindow = {};
@@ -523,7 +529,22 @@
     state.confirming = false;
   }
 
-  const oldestEditableDay = () => addDays(startOfDay(new Date()), -Math.max(0, ...Object.values(editWindow || {}).filter((v) => typeof v === "number"), config.fallbackEditDays));
+  // Ordinary lessons decide how far back the teacher can go; summary exams stay open
+  // for most of a year, which would only make the day list endless.
+  const oldestEditableDay = () => addDays(startOfDay(new Date()), -editDaysFor("other"));
+
+  // The school days the teacher can still fill in, oldest first. Many write the week's
+  // absences on paper and enter them all on Friday, so these are one tap away.
+  function recentDays() {
+    const today = startOfDay(new Date());
+    const oldest = oldestEditableDay();
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = addDays(today, -i);
+      if (d >= oldest && d.getDay() !== 0) days.push(d);
+    }
+    return days;
+  }
 
   // --- actions ---------------------------------------------------------------
 
@@ -558,12 +579,14 @@
     await load(true);
   }
 
-  function changeDay(delta) {
-    const next = addDays(state.date, delta);
-    if (next > startOfDay(new Date()) || next < oldestEditableDay()) return;
+  function goToDay(next) {
+    if (next > startOfDay(new Date()) || next < oldestEditableDay() || sameDay(next, state.date)) return;
+    if (pendingWrites().length && !window.confirm("ამ დღის მონიშვნები ჯერ არ ჩაწერილა. მაინც გადავიდეთ?")) return;
     state.date = next;
-    load(false);
+    load(true); // stay on the same class, the teacher is usually going through one class's week
   }
+
+  const changeDay = (delta) => goToDay(addDays(state.date, delta));
 
   function handleError(e) {
     if (e instanceof ApiChanged) state.apiChanged = e.message;
@@ -669,6 +692,10 @@
     .close { flex: none; width: 44px; height: 44px; border: 0; border-radius: 999px; background: #e9ece6; font-size: 18px; }
     .badge { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #dfeae4; color: #2f5d4e; white-space: nowrap; }
     .badge.warn { background: #fbefd9; color: #b7791f; }
+    .days { display: flex; gap: 6px; margin: 8px 0 4px; }
+    .dayBtn { flex: 1; min-width: 0; min-height: 52px; padding: 4px 0; border: 1px solid #d6ddd6; border-radius: 12px; background: none; font-size: 13px; line-height: 1.2; color: inherit; }
+    .dayBtn b { display: block; font-size: 18px; }
+    .dayBtn.on { background: #2f5d4e; border-color: #2f5d4e; color: #fff; }
     .classes { display: flex; flex-wrap: wrap; gap: 8px; }
     .class { padding: 10px 18px; border: 1px solid #d6ddd6; border-radius: 999px; background: none; font-size: 16px; font-weight: 600; }
     .class.on { background: #2f5d4e; border-color: #2f5d4e; color: #fff; }
@@ -844,6 +871,9 @@
             </div>
             <button class="close" data-action="close" aria-label="დახურვა">✕</button>
           </div>
+          <div class="days">${recentDays()
+            .map((d) => `<button class="dayBtn ${sameDay(d, state.date) ? "on" : ""}" data-action="day" data-time="${d.getTime()}" ${state.loading || state.saving ? "disabled" : ""}>${SHORT_WEEKDAYS[d.getDay()]}<b>${d.getDate()}</b></button>`)
+            .join("")}</div>
           <div class="row">
             <h1>დასწრება</h1>
             ${broken ? `<span class="badge warn">ჩაწერა გამორთულია</span>` : ""}
@@ -868,6 +898,7 @@
       case "close": state.open = false; break;
       case "prev": changeDay(-1); return;
       case "next": changeDay(1); return;
+      case "day": goToDay(new Date(Number(el.dataset.time))); return;
       case "class": selectClass(el.dataset.key); break;
       case "lesson": toggleLesson(el.dataset.key); break;
       case "pupil": togglePupil(Number(el.dataset.id)); break;
