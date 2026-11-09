@@ -16,6 +16,32 @@ The full list of 370-odd endpoints is in [endpoints.txt](endpoints.txt).
   Georgian message in `assets/lang/ka.json` under `GROWL.*`.
 - The login page has reCAPTCHA and an F5 bot-protection script (`/TSbd/...`, `TS*` cookies).
 
+## Sessions
+
+Login goes to Keycloak at `auth.emis.ge` (realm `emis`) through the site's own backend.
+
+| Token | Lifetime |
+| --- | --- |
+| access token | 10 minutes |
+| refresh token | 30 minutes, reset on every refresh |
+
+The site's HTTP interceptor refreshes only when it is about to send a request and the access token
+has under 10 seconds left:
+
+```
+POST keycloak/refresh
+Content-Type: application/x-www-form-urlencoded
+refresh_token=...
+```
+
+It stores the result in `localStorage` (`access_token`, `refresh_token`, `expires_in`,
+`accessTokenExpirationDate`). Nothing refreshes while the teacher is idle, so a break of more than
+30 minutes always ends at the login page. Jurnali refreshes ahead of time while the page is visible
+and again when it comes back to the foreground.
+
+The login form renders the password field as `type="text"` with `autocomplete="off"` outside dev
+mode, which is why browsers never offer to save it.
+
 ## Who sees what
 
 A staff account can have several hats at once. The front end keeps them in `localStorage`
