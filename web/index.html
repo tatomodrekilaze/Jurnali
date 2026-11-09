@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ka">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ჟურნალი</title>
+  <meta name="description" content="დღის გაცდენები onlineschool-ში რამდენიმე შეხებით.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;600;700&family=Noto+Serif+Georgian:wght@700&display=swap">
+  <style>
+    :root {
+      --bg: #fbfcf9;
+      --ink: #1d2a24;
+      --muted: #5f6d66;
+      --line: #d6ddd6;
+      --accent: #2f5d4e;
+      --accent-soft: #dfeae4;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161b18; --ink: #e6ece8; --muted: #9aa8a1; --line: #2f3833;
+        --accent: #7fc3a7; --accent-soft: #24352d;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 16px/1.6 "Noto Sans Georgian", system-ui, sans-serif;
+    }
+    main { max-width: 640px; margin: 0 auto; padding: 48px 20px 64px; }
+    h1 { margin: 0 0 8px; font: 700 40px/1.1 "Noto Serif Georgian", Georgia, serif; }
+    h2 { margin: 40px 0 12px; font-size: 20px; }
+    p { margin: 0 0 12px; }
+    .lead { color: var(--muted); font-size: 18px; }
+    ol { margin: 0; padding-left: 22px; }
+    li { margin-bottom: 6px; }
+    .button {
+      display: inline-block; padding: 14px 22px; border-radius: 14px;
+      background: var(--accent); color: var(--bg); font-weight: 700; text-decoration: none;
+    }
+    .bookmarklet {
+      display: inline-block; padding: 10px 16px; border: 2px dashed var(--accent); border-radius: 12px;
+      background: var(--accent-soft); color: var(--accent); font-weight: 700; text-decoration: none; cursor: grab;
+    }
+    .note { color: var(--muted); font-size: 14px; }
+    footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>ჟურნალი</h1>
+  <p class="lead">მონიშნეთ დღის გაცდენები ერთხელ, და ის ჩაიწერება ყველა დღევანდელ გაკვეთილში. onlineschool-ის ჟურნალი, უფრო მარტივად.</p>
+
+  <h2>ტელეფონზე (Android)</h2>
+  <p><a class="button" href="https://github.com/tatomodrekilaze/Jurnali/releases/latest/download/jurnali.apk">ჩამოტვირთვა</a></p>
+  <ol>
+    <li>გახსენით ჩამოტვირთული ფაილი.</li>
+    <li>თუ ტელეფონი გკითხავთ, დართეთ ნება ინსტალაციაზე ამ წყაროდან.</li>
+    <li>გახსენით „ჟურნალი“ და შედით onlineschool-ში ჩვეულებრივად.</li>
+    <li>ქვემოთ მარჯვნივ გამოჩნდება მწვანე ღილაკი „დღის გაცდენები“.</li>
+  </ol>
+
+  <h2>კომპიუტერზე</h2>
+  <p>გადაათრიეთ ეს ღილაკი სანიშნეების ზოლზე (Ctrl+Shift+B აჩენს ზოლს):</p>
+  <p><a class="bookmarklet" id="bookmarklet" href="#">✓ დღის გაცდენები</a></p>
+  <p>შემდეგ გახსენით onlineschool, შედით, და დააჭირეთ სანიშნეს.</p>
+
+  <h2>უსაფრთხოება</h2>
+  <p>პაროლი არასოდეს გადის აქ: შესვლა ხდება onlineschool-ის საკუთარ გვერდზე. აპლიკაცია ინახავს მხოლოდ იმას, რასაც თქვენ მონიშნავთ, და შენახვის შემდეგ ჟურნალს თავიდან კითხულობს, რომ დარწმუნდეს.</p>
+  <p class="note">ეს არ არის EMIS-ის ოფიციალური პროდუქტი.</p>
+
+  <footer>
+    <a href="https://github.com/tatomodrekilaze/Jurnali">GitHub</a>
+  </footer>
+</main>
+<script>
+  // Built at runtime so the script URL stays next to this page wherever it's hosted.
+  const src = new URL("jurnali.js", location.href).href;
+  document.getElementById("bookmarklet").href =
+    "javascript:(function(){if(window.Jurnali){window.Jurnali.open();return}" +
+    "var s=document.createElement('script');s.src='" + src + "?t='+Date.now();" +
+    "s.onload=function(){window.Jurnali&&window.Jurnali.open()};document.head.appendChild(s)})()";
+</script>
+</body>
+</html>
