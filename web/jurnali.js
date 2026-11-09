@@ -51,7 +51,7 @@
       const remote = await res.json();
       if ((remote.minVersion || 0) > VERSION) {
         remote.disabled = true;
-        remote.message = remote.message || "საჭიროა ახალი ვერსია. განაახლეთ აპლიკაცია.";
+        remote.message = remote.message || "გამოვიდა ახალი ვერსია. ჩამოტვირთეთ თავიდან: tatomodrekilaze.github.io/Jurnali";
       }
       config = {
         ...config,
@@ -93,12 +93,12 @@
 
   // Error codes the API returns on 409, with the wording the official site uses.
   const SERVER_ERRORS = {
-    assessment_exists: "მოსწავლეს უწერია შეფასება, გაცდენას ვერ დაუწერთ",
-    past_absence_error: "დასწრების აღრიცხვის ვადა გასულია",
+    assessment_exists: "ნიშანი უკვე უწერია, გაცდენას ვერ ჩაუწერთ",
+    past_absence_error: "ამ გაკვეთილის შეცვლის დრო გავიდა",
     future_absence_error: "გაკვეთილი ჯერ არ დაწყებულა",
-    moved_pupil_attendance_error: "მობილობით გადასულ მოსწავლეზე დასწრება არ აღირიცხება",
+    moved_pupil_attendance_error: "მოსწავლე სხვა სკოლაშია გადასული",
     pupil_moved_to_other_school: "მოსწავლე სხვა სკოლაშია გადასული",
-    pupil_is_exam_restoration_participant: "მოსწავლე რეგისტრირებულია აღდგენაზე",
+    pupil_is_exam_restoration_participant: "მოსწავლე აღდგენით გამოცდაზეა ჩაწერილი",
   };
 
   function readToken() {
@@ -371,9 +371,16 @@
       }
     }
 
+    // One request per class group, and a homeroom teacher can have half a dozen,
+    // so send them together rather than one after another.
+    const groups = [...slotsByGroup];
+    const weeks = await Promise.all(
+      groups.map(([classGroupId]) => request("GET", fillPath(config.paths.week, { classGroupId, date: dateStr }))),
+    );
+
     const classes = new Map();
-    for (const [classGroupId, slots] of slotsByGroup) {
-      const week = await request("GET", fillPath(config.paths.week, { classGroupId, date: dateStr }));
+    for (const [i, [classGroupId, slots]] of groups.entries()) {
+      const week = weeks[i];
       if (!Array.isArray(week)) throw new ApiChanged("journal week is not a list");
       week.forEach((l) => expectFields(l, f.lesson, "journal lesson"));
 
@@ -560,8 +567,8 @@
 
   function handleError(e) {
     if (e instanceof ApiChanged) state.apiChanged = e.message;
-    else if (e instanceof NotLoggedIn) state.error = "სესია ამოიწურა. შედით onlineschool-ში თავიდან.";
-    else state.error = `ვერ ჩაიტვირთა (${e.message}).`;
+    else if (e instanceof NotLoggedIn) state.error = { text: "საიტიდან გამოგიყვანათ. შედით თავიდან." };
+    else state.error = { text: "ვერ ჩაიტვირთა. შეამოწმეთ ინტერნეტი.", detail: e.message, retry: true };
   }
 
   async function save() {
@@ -580,7 +587,7 @@
         await request(w.method, fillPath(config.paths.absence, { lessonId: w.lesson.id, pupilId: w.pupilId }));
       } catch (e) {
         if (e instanceof NotLoggedIn) {
-          state.error = "სესია ამოიწურა. შედით onlineschool-ში თავიდან და სცადეთ ხელახლა.";
+          state.error = { text: "საიტიდან გამოგიყვანათ. შედით თავიდან და ისევ ჩაწერეთ." };
           break;
         }
         failures.set(w.lesson.key, e instanceof Rejected ? SERVER_ERRORS[e.code] || e.code : e.message);
@@ -589,7 +596,7 @@
     }
 
     // Don't trust the writes; read the journal back and compare.
-    state.progress = "შემოწმება";
+    state.progress = "ვამოწმებ";
     render();
     const touchedLessons = [...new Set(writes.map((w) => w.lesson.key))];
     try {
@@ -604,7 +611,7 @@
       }
       state.overrides.clear();
     } catch (e) {
-      state.error = "შენახვის შემდეგ ჟურნალი ვერ შემოწმდა. გადაამოწმეთ საიტზე.";
+      state.error = { text: "ჩაწერა დასრულდა, მაგრამ ვერ შევამოწმე. ნახეთ საიტზე, ჩაიწერა თუ არა.", retry: true };
     }
     state.saving = false;
     render();
@@ -642,7 +649,7 @@
       right: max(16px, env(safe-area-inset-right, 0px));
       bottom: calc(20px + env(safe-area-inset-bottom, 0px));
       border: 0; border-radius: 999px; padding: 14px 18px;
-      background: #2f5d4e; color: #fff; font-size: 15px; font-weight: 700;
+      background: #2f5d4e; color: #fff; font-size: 17px; font-weight: 700;
       box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
     }
 
@@ -655,45 +662,45 @@
     .head { display: grid; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #d6ddd6; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .day { display: flex; align-items: center; gap: 4px; }
-    .day span { min-width: 0; font-size: 14px; font-weight: 600; }
-    .nav { width: 34px; height: 34px; border: 1px solid #d6ddd6; border-radius: 10px; background: none; font-size: 16px; }
+    .day span { min-width: 0; font-size: 15px; font-weight: 600; }
+    .nav { width: 42px; height: 42px; border: 1px solid #d6ddd6; border-radius: 10px; background: none; font-size: 16px; }
     .nav:disabled { opacity: .3; }
     h1 { margin: 0; font-size: 21px; }
-    .close { flex: none; width: 38px; height: 38px; border: 0; border-radius: 999px; background: #e9ece6; font-size: 18px; }
+    .close { flex: none; width: 44px; height: 44px; border: 0; border-radius: 999px; background: #e9ece6; font-size: 18px; }
     .badge { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #dfeae4; color: #2f5d4e; white-space: nowrap; }
     .badge.warn { background: #fbefd9; color: #b7791f; }
     .classes { display: flex; flex-wrap: wrap; gap: 8px; }
-    .class { padding: 7px 14px; border: 1px solid #d6ddd6; border-radius: 999px; background: none; font-size: 14px; font-weight: 600; }
+    .class { padding: 10px 18px; border: 1px solid #d6ddd6; border-radius: 999px; background: none; font-size: 16px; font-weight: 600; }
     .class.on { background: #2f5d4e; border-color: #2f5d4e; color: #fff; }
 
     .body { flex: 1; overflow-y: auto; padding: 8px 16px 150px; }
-    .label { margin: 12px 0 8px; font-size: 12px; font-weight: 600; color: #5f6d66; text-transform: uppercase; letter-spacing: .06em; }
+    .label { margin: 14px 0 8px; font-size: 14px; font-weight: 700; color: #5f6d66; }
 
     .lessons { display: grid; gap: 6px; }
     .lesson {
       display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 10px;
-      padding: 10px 12px; border: 1px solid #d6ddd6; border-radius: 12px; background: none; text-align: left; font-size: 14px;
+      min-height: 50px; padding: 10px 12px; border: 1px solid #d6ddd6; border-radius: 12px; background: none; text-align: left; font-size: 16px;
     }
     .check { display: grid; place-items: center; width: 20px; height: 20px; border: 2px solid #d6ddd6; border-radius: 6px; color: #fff; font-size: 13px; }
     .lesson.on .check { background: #2f5d4e; border-color: #2f5d4e; }
     .lesson:disabled { opacity: .6; }
-    .lesson .side { font-size: 12px; color: #5f6d66; text-align: right; font-variant-numeric: tabular-nums; }
+    .lesson .side { font-size: 14px; color: #5f6d66; text-align: right; font-variant-numeric: tabular-nums; }
     .ok { font-weight: 700; color: #2e7d4f; }
     .fail { font-weight: 700; color: #c4472f; }
-    .reason { grid-column: 2 / -1; font-size: 12px; color: #c4472f; }
+    .reason { grid-column: 2 / -1; font-size: 14px; color: #c4472f; }
 
-    .tally { display: flex; gap: 14px; margin: 4px 0 8px; font-size: 14px; }
+    .tally { display: flex; gap: 16px; margin: 4px 0 8px; font-size: 16px; }
     .tally .absent b { color: #c4472f; }
     .pupil {
       display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px;
-      width: 100%; min-height: 52px; padding: 10px 4px;
-      border: 0; border-bottom: 1px solid #d6ddd6; background: none; text-align: left; font-size: 16px;
+      width: 100%; min-height: 58px; padding: 10px 4px;
+      border: 0; border-bottom: 1px solid #d6ddd6; background: none; text-align: left; font-size: 17px;
     }
     .pupil:disabled { cursor: default; }
-    .num { font-size: 12px; color: #5f6d66; font-variant-numeric: tabular-nums; }
+    .num { font-size: 13px; color: #5f6d66; font-variant-numeric: tabular-nums; }
     .who { display: grid; gap: 2px; min-width: 0; }
-    .note { font-size: 12px; color: #5f6d66; }
-    .tag { padding: 5px 11px; border-radius: 999px; background: #dfeae4; color: #2f5d4e; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .note { font-size: 13px; color: #5f6d66; }
+    .tag { padding: 6px 12px; border-radius: 999px; background: #dfeae4; color: #2f5d4e; font-size: 14px; font-weight: 600; white-space: nowrap; }
     .pupil.absent { background: #f8e1da; }
     .pupil.absent .tag { background: #c4472f; color: #fff; }
     .pupil.mixed .tag { background: #fbefd9; color: #b7791f; }
@@ -703,20 +710,21 @@
       padding: 12px 16px calc(18px + env(safe-area-inset-bottom, 0px));
       background: linear-gradient(to top, #fbfcf9 75%, rgba(251, 252, 249, 0));
     }
-    .save { width: 100%; padding: 16px; border: 0; border-radius: 16px; background: #2f5d4e; color: #fff; font-size: 17px; font-weight: 700; }
+    .save { width: 100%; padding: 16px; border: 0; border-radius: 16px; background: #2f5d4e; color: #fff; font-size: 18px; font-weight: 700; }
     .save:disabled { opacity: .45; }
-    .hint { margin-top: 7px; font-size: 12px; line-height: 1.4; color: #5f6d66; text-align: center; }
+    .hint { margin-top: 7px; font-size: 14px; line-height: 1.4; color: #5f6d66; text-align: center; }
 
-    .notice { margin: 8px 0; padding: 14px; border-radius: 14px; background: #fbefd9; font-size: 14px; line-height: 1.5; }
+    .notice { margin: 8px 0; padding: 16px; border-radius: 14px; background: #fbefd9; font-size: 16px; line-height: 1.5; }
+    .retry { display: block; width: 100%; margin-top: 12px; padding: 14px; border: 0; border-radius: 12px; background: #2f5d4e; color: #fff; font-size: 16px; font-weight: 700; }
     .notice b { color: #b7791f; }
-    .notice small { display: block; margin-top: 6px; font-size: 11px; color: #5f6d66; word-break: break-word; }
-    .info { margin: 8px 0; padding: 12px 14px; border-radius: 12px; background: #dfeae4; color: #1d2a24; font-size: 13px; line-height: 1.5; }
-    .empty { padding: 30px 6px; text-align: center; font-size: 15px; line-height: 1.6; color: #5f6d66; }
+    .notice small { display: block; margin-top: 8px; font-size: 12px; color: #5f6d66; word-break: break-word; }
+    .info { margin: 8px 0; padding: 12px 14px; border-radius: 12px; background: #dfeae4; color: #1d2a24; font-size: 15px; line-height: 1.5; }
+    .empty { padding: 30px 6px; text-align: center; font-size: 17px; line-height: 1.6; color: #5f6d66; }
 
-    .confirm { display: grid; gap: 10px; padding: 14px; border: 1px solid #d6ddd6; border-radius: 16px; background: #fbfcf9; box-shadow: 0 -6px 20px rgba(0, 0, 0, .08); font-size: 15px; line-height: 1.5; }
+    .confirm { display: grid; gap: 10px; padding: 14px; border: 1px solid #d6ddd6; border-radius: 16px; background: #fbfcf9; box-shadow: 0 -6px 20px rgba(0, 0, 0, .08); font-size: 17px; line-height: 1.5; }
     .confirm p { margin: 0; }
     .confirm .buttons { display: flex; gap: 8px; }
-    .confirm button { flex: 1; padding: 12px; border: 1px solid #d6ddd6; border-radius: 12px; background: none; font-size: 15px; font-weight: 700; }
+    .confirm button { flex: 1; padding: 15px; border: 1px solid #d6ddd6; border-radius: 12px; background: none; font-size: 17px; font-weight: 700; }
     .confirm .go { background: #c4472f; border-color: #c4472f; color: #fff; }
   `;
 
@@ -730,9 +738,9 @@
     const on = status === "open" && !state.excluded.has(l.key);
     const result = state.results.get(l.key);
     let side;
-    if (result) side = result.ok ? `<span class="ok">✓ შენახულია</span>` : `<span class="fail">✗ შეამოწმეთ</span>`;
-    else if (status === "upcoming") side = `⏳ ${l.start}-ზე გაიხსნება`;
-    else if (status === "closed") side = `🔒 ვადა გასულია`;
+    if (result) side = result.ok ? `<span class="ok">✓ ჩაიწერა</span>` : `<span class="fail">✗ არ ჩაიწერა</span>`;
+    else if (status === "upcoming") side = `იწყება ${l.start}-ზე`;
+    else if (status === "closed") side = `🔒 დრო გავიდა`;
     else if (status === "locked") side = `🔒 ${l.start}`;
     else side = l.start;
     return `<button class="lesson ${on ? "on" : ""}" data-action="lesson" data-key="${escapeHtml(l.key)}" ${usable ? "" : "disabled"}>
@@ -745,11 +753,11 @@
     const editable = targetLessons(cls).length > 0 && !state.saving;
     const views = cls.pupils.map((p) => [p, pupilView(cls, p.id)]);
     const absent = views.filter(([, v]) => v.status === "absent").length;
-    const tags = { absent: "აკლია", present: "ესწრება", mixed: "ნაწილობრივ" };
+    const tags = { absent: "აკლია", present: "ესწრება", mixed: "ზოგან აკლია" };
     const rows = views.map(([p, v], i) => {
       const notes = [];
-      if (v.carried) notes.push("წინა გაკვეთილიდან");
-      if (v.graded) notes.push("უწერია შეფასება");
+      if (v.carried) notes.push("წინა გაკვეთილზეც აკლდა");
+      if (v.graded) notes.push("ნიშანი უწერია");
       const tag = v.status === "absent" && v.excused ? "საპატიო" : tags[v.status];
       return `<button class="pupil ${v.status}" data-action="pupil" data-id="${p.id}" ${editable ? "" : "disabled"}>
         <span class="num">${pad2(i + 1)}</span>
@@ -757,7 +765,7 @@
         <span class="tag">${tag}</span>
       </button>`;
     });
-    return `<div class="label">${editable ? "შეეხეთ მოსწავლეს, თუ აკლია" : "მოსწავლეები"}</div>
+    return `<div class="label">${editable ? "ვინც აკლია, დააჭირეთ" : "მოსწავლეები"}</div>
       <div class="tally"><span>ესწრება: <b>${cls.pupils.length - absent}</b></span><span class="absent">აკლია: <b>${absent}</b></span></div>
       ${rows.join("")}`;
   }
@@ -765,24 +773,29 @@
   function viewBody(cls) {
     if (state.loading) return `<div class="empty">იტვირთება…</div>`;
     if (config.disabled) {
-      return `<div class="notice"><b>დროებით გამორთულია.</b> ${escapeHtml(config.message || "გამოიყენეთ საიტი ჩვეულებრივად.")}</div>`;
+      return `<div class="notice"><b>დროებით გამორთულია.</b> ${escapeHtml(config.message || "დღეს დასწრება საიტზე შეავსეთ, ჩვეულებრივად.")}</div>`;
     }
     if (state.apiChanged) {
-      return `<div class="notice"><b>onlineschool შეიცვალა.</b> შენახვა გამორთულია, რომ ჟურნალში შეცდომა არ მოხვდეს. დღეს გამოიყენეთ საიტი ჩვეულებრივად.
+      return `<div class="notice"><b>საიტი შეიცვალა.</b> ჩაწერა დროებით გამოვრთეთ, რომ ჟურნალში შეცდომა არ მოხვდეს. დღეს დასწრება საიტზე შეავსეთ, ჩვეულებრივად.
         <small>${escapeHtml(state.apiChanged)}</small></div>`;
     }
-    if (state.error) return `<div class="notice"><b>შეცდომა.</b> ${escapeHtml(state.error)}</div>`;
+    if (state.error) {
+      const { text, detail, retry } = state.error;
+      return `<div class="notice">${escapeHtml(text)}
+        ${retry ? `<button class="retry" data-action="retry">თავიდან ცდა</button>` : ""}
+        ${detail ? `<small>${escapeHtml(detail)}</small>` : ""}</div>`;
+    }
     if (state.holiday) return `<div class="empty">ამ დღეს დასვენებაა.</div>`;
     if (!cls) return `<div class="empty">ამ დღეს გაკვეთილები არ გაქვთ.</div>`;
 
     let info = "";
     const upcoming = cls.lessons.filter((l) => lessonStatus(l) === "upcoming").length;
     if (!openLessons(cls).length && upcoming) {
-      info = `<div class="info">დასწრების აღრიცხვა გაკვეთილის დაწყებისას იხსნება. მონიშნული გაცდენები შემდეგ გაკვეთილებზე ავტომატურად გადავა.</div>`;
+      info = `<div class="info">დასწრებას გაკვეთილის დაწყების შემდეგ ჩაწერთ. ვისაც ახლა მონიშნავთ, მომდევნო გაკვეთილზეც მონიშნული დაგხვდებათ.</div>`;
     } else if (upcoming) {
-      info = `<div class="info">დარჩენილ ${upcoming} გაკვეთილზე გაცდენები ავტომატურად გადავა, როცა დაიწყება და ისევ გახსნით.</div>`;
+      info = `<div class="info">ვინც დღეს აკლია, მომდევნო გაკვეთილზეც მონიშნული დაგხვდებათ. დარჩა ${upcoming} გაკვეთილი.</div>`;
     }
-    return `<div class="label">გაკვეთილები</div><div class="lessons">${cls.lessons.map(viewLesson).join("")}</div>${info}${viewPupils(cls)}`;
+    return `<div class="label">სად ჩაიწეროს</div><div class="lessons">${cls.lessons.map(viewLesson).join("")}</div>${info}${viewPupils(cls)}`;
   }
 
   function viewConfirm() {
@@ -791,8 +804,8 @@
     const unmarks = writes.length - marks;
     const lessons = new Set(writes.map((w) => w.lesson.key)).size;
     return `<div class="confirm">
-      <p>ჟურნალში ჩაიწერება: <b>${marks}</b> გაცდენა${unmarks ? `, <b>${unmarks}</b> გაცდენის მოხსნა` : ""}, ${lessons} გაკვეთილში.</p>
-      <div class="buttons"><button data-action="cancel">გაუქმება</button><button class="go" data-action="confirm">დიახ, შენახვა</button></div>
+      <p>${marks ? `ჩაიწერება <b>${marks}</b> გაცდენა` : ""}${marks && unmarks ? ", " : ""}${unmarks ? `წაიშლება <b>${unmarks}</b> გაცდენა` : ""} (${lessons} გაკვეთილი).</p>
+      <div class="buttons"><button data-action="cancel">უკან</button><button class="go" data-action="confirm">დიახ, ჩაწერე</button></div>
     </div>`;
   }
 
@@ -800,10 +813,10 @@
     if (!cls || state.loading || state.error || state.apiChanged || config.disabled) return "";
     if (state.confirming) return `<div class="footer">${viewConfirm()}</div>`;
     const n = pendingWrites().length;
-    const label = state.saving ? `ინახება… ${state.progress || ""}` : n ? `შენახვა (${n})` : "ყველაფერი შენახულია";
+    const label = state.saving ? `იწერება… ${state.progress || ""}` : n ? `ჟურნალში ჩაწერა (${n})` : "ყველაფერი ჩაწერილია ✓";
     return `<div class="footer">
       <button class="save" data-action="save" ${state.saving || !n ? "disabled" : ""}>${label}</button>
-      <div class="hint">მოსწავლე, რომელსაც არ შეეხებით, ჟურნალში „ესწრება“ რჩება</div>
+      <div class="hint">ვისაც არ დააჭერთ, ჟურნალში „ესწრება“ ეწერება</div>
     </div>`;
   }
 
@@ -833,7 +846,7 @@
           </div>
           <div class="row">
             <h1>დასწრება</h1>
-            <span class="badge ${broken ? "warn" : ""}">${broken ? "შენახვა გამორთულია" : "onlineschool ✓"}</span>
+            ${broken ? `<span class="badge warn">ჩაწერა გამორთულია</span>` : ""}
           </div>
           ${state.classes.length > 1 ? `<div class="classes">${state.classes
             .map((c) => `<button class="class ${c.key === state.classKey ? "on" : ""}" data-action="class" data-key="${escapeHtml(c.key)}">${escapeHtml(c.key)}</button>`)
@@ -861,6 +874,7 @@
       case "save": state.confirming = true; break;
       case "cancel": state.confirming = false; break;
       case "confirm": save(); return;
+      case "retry": load(true); return;
     }
     render();
   });
