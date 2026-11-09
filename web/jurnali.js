@@ -804,7 +804,7 @@
     const unmarks = writes.length - marks;
     const lessons = new Set(writes.map((w) => w.lesson.key)).size;
     return `<div class="confirm">
-      <p>${marks ? `ჩაიწერება <b>${marks}</b> გაცდენა` : ""}${marks && unmarks ? ", " : ""}${unmarks ? `წაიშლება <b>${unmarks}</b> გაცდენა` : ""} (${lessons} გაკვეთილი).</p>
+      <p>${marks ? `ჩაიწერება <b>${marks}</b> გაცდენა` : ""}${marks && unmarks ? ", " : ""}${unmarks ? `წაიშლება <b>${unmarks}</b> გაცდენა` : ""}, ${lessons} გაკვეთილზე.</p>
       <div class="buttons"><button data-action="cancel">უკან</button><button class="go" data-action="confirm">დიახ, ჩაწერე</button></div>
     </div>`;
   }
