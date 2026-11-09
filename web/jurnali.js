@@ -958,7 +958,7 @@
       .map(({ date, left }) => {
         const when = left === 0 ? "შევსება მხოლოდ დღეს შეიძლება" : `შევსება კიდევ ${left + 1} დღე შეიძლება`;
         return `<button class="remind" data-action="day" data-time="${date.getTime()}">
-          <b>${escapeHtml(onDay(date))} (${date.getDate()} ${MONTHS[date.getMonth()]}) ${escapeHtml(cls.key)}-ში არავის აკლია.</b>
+          <b>${escapeHtml(onDay(date))}, ${date.getDate()} ${MONTHS[date.getMonth()].replace(/ი$/, "")}ს, ${escapeHtml(cls.key)}-ში არავინ აკლდა.</b>
           თუ ჯერ არ შეგივსიათ, ${when}. <u>გადასვლა</u></button>`;
       })
       .join("");
