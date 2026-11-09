@@ -36,8 +36,27 @@ refresh_token=...
 
 It stores the result in `localStorage` (`access_token`, `refresh_token`, `expires_in`,
 `accessTokenExpirationDate`). Nothing refreshes while the teacher is idle, so a break of more than
-30 minutes always ends at the login page. Jurnali refreshes ahead of time while the page is visible
-and again when it comes back to the foreground.
+30 minutes always ends at the login page.
+
+On top of that the site has its own idle timer (`bn-ng-idle`, started with 600 seconds in the main
+layout). After 10 minutes with no mouse, touch or key event it shows "გსურთ მუშაობის გაგრძელება
+სისტემაში?" with a 10-second countdown. If nobody answers it calls `keycloak/logout` (which ends the
+Keycloak session for good) and runs `localStorage.clear()`. The watcher listens for `mousemove` on
+the document, so any such event resets it.
+
+What Jurnali does about it:
+
+- While the page is open it refreshes ahead of time, and again when the page comes back to the
+  foreground. It sends a synthetic `mousemove` once a minute and clicks "გაგრძელება" if the prompt
+  shows anyway.
+- In the Android app the page reports every new token to the app (a `WebMessageListener` restricted
+  to the onlineschool origin). While the app is in the background, an alarm that may fire in Doze
+  renews the session every 12 minutes with the same request as above. When the teacher comes back,
+  the newer tokens are written into `localStorage` before the page wakes up, and on a cold start
+  before the site's own code runs (a document-start script). A logout from the site clears the
+  app's copy.
+- The session still ends when Keycloak's maximum session age runs out, or if the phone's battery
+  saver stops the alarm. Then the teacher logs in again, and the password manager fills it in.
 
 The login form renders the password field as `type="text"` with `autocomplete="off"` outside dev
 mode, which is why browsers never offer to save it.

@@ -177,6 +177,7 @@
         localStorage.access_token = t.access_token;
         localStorage.expires_in = t.expires_in;
         localStorage.accessTokenExpirationDate = new Date(Date.now() + 1000 * t.expires_in).toString();
+        reportSession();
         return true;
       } catch (_) {
         return false;
@@ -201,6 +202,71 @@
     setInterval(tick, 60000);
     document.addEventListener("visibilitychange", tick);
     tick();
+  }
+
+  // The site's other way of logging people out: after 10 minutes with no mouse or touch
+  // it asks "continue working?" and, 10 seconds later, calls keycloak/logout and wipes
+  // localStorage. Teachers leave the journal open between lessons, so this is most of
+  // the logouts they see. Its idle watcher (bn-ng-idle) resets on any mousemove on the
+  // document, synthetic ones included.
+  function stayActive() {
+    const nudge = () => {
+      if (readToken()) document.dispatchEvent(new MouseEvent("mousemove"));
+    };
+    setInterval(nudge, 60000);
+    document.addEventListener("visibilitychange", nudge);
+  }
+
+  // Timers can catch up all at once when a phone wakes, so the question may still pop
+  // up before the first nudge. Answer it.
+  function answerIdlePrompt() {
+    const popup = document.querySelector("user-session-popup");
+    if (!popup) return;
+    const button = [...popup.querySelectorAll("button")].find((b) => b.textContent.includes("გაგრძელება"));
+    if (button) button.click();
+  }
+
+  // --- Android app hand-off ---
+  //
+  // The app renews the session while the phone is locked, which JS can't do because the
+  // WebView is paused. We tell it about every new token and about an explicit logout;
+  // it puts fresher tokens back into localStorage when the teacher returns.
+  // jurnaliNative only exists inside the app, and only on this origin.
+
+  let reportedToken = null;
+
+  function reportSession() {
+    const native = window.jurnaliNative;
+    if (!native) return;
+    let session;
+    try {
+      session = {
+        type: "session",
+        access_token: localStorage.access_token,
+        refresh_token: localStorage.refresh_token,
+        expires_in: Number(localStorage.expires_in) || 600,
+        access_expires_at: new Date(localStorage.accessTokenExpirationDate).getTime() || 0,
+      };
+    } catch (_) {
+      return;
+    }
+    // The site writes the string "undefined" when its own refresh fails.
+    const token = session.refresh_token;
+    if (!token || token === "undefined" || token === reportedToken) return;
+    reportedToken = token;
+    native.postMessage(JSON.stringify(session));
+  }
+
+  // Both the logout button and the idle prompt go through this request.
+  function watchLogout() {
+    const open = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      if (window.jurnaliNative && String(url).includes("keycloak/logout")) {
+        reportedToken = null;
+        window.jurnaliNative.postMessage(JSON.stringify({ type: "logout" }));
+      }
+      return open.apply(this, arguments);
+    };
   }
 
   // The login page renders the password as type="text" with autocomplete="off"
@@ -809,6 +875,8 @@
   function sync() {
     if (!document.body) return;
     fixLoginForm();
+    answerIdlePrompt();
+    reportSession();
     if (!host.isConnected) document.body.appendChild(host);
     const loggedIn = isLoggedIn();
     if (loggedIn === lastLoggedIn) return;
@@ -824,7 +892,9 @@
 
   sync();
   setInterval(sync, 1500);
+  watchLogout();
   keepSessionAlive();
+  stayActive();
 
   window.Jurnali = { version: VERSION, open, refreshSession };
 })();

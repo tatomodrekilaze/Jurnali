@@ -8,6 +8,7 @@ Marking attendance on the official site means opening the journal for every clas
 - **Follows the journal's own rules.** Lessons unlock when they start and lock when the edit window closes, exactly like the official site. A pupil who already has a grade is never marked absent.
 - **Opens where you need it.** The class with the lesson running right now is selected automatically.
 - **Catch up on missed days** with ‹ and ›, as far back as EMIS allows.
+- **Stays logged in.** The site logs teachers out after 10 idle minutes and again whenever they're away for half an hour. Jurnali answers the "continue working?" prompt for them, and the Android app keeps the session alive while the phone is locked. The login page is fixed so the phone offers to save the password.
 - **Checks its own work.** After saving it reads the journal back and marks every lesson ✓ or ✗, with EMIS's own error message when something was refused.
 
 **Download:** [tatomodrekilaze.github.io/Jurnali](https://tatomodrekilaze.github.io/Jurnali/)
