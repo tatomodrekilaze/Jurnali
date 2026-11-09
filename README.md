@@ -2,7 +2,13 @@
 
 A lighter front end for the [onlineschool.emis.ge](https://onlineschool.emis.ge) teacher journal.
 
-Marking attendance on the official site means opening the journal for every class and subject, one lesson at a time. If a child is out sick, the teacher marks them absent four or five times a day. Jurnali shows today's lessons and the class list on one screen: tap the kids who are missing, save once, done.
+Marking attendance on the official site means opening the journal for every class and subject, one lesson at a time. If a child is out sick, the teacher marks them absent four or five times a day. Jurnali shows the day's lessons and the class list on one screen: tap the kids who are missing, save once, done.
+
+- **Absences carry forward.** A child marked absent in the first lesson is pre-selected for every later lesson that day, so after each lesson saving is a single tap. Anything already set by hand on the site is left alone.
+- **Follows the journal's own rules.** Lessons unlock when they start and lock when the edit window closes, exactly like the official site. A pupil who already has a grade is never marked absent.
+- **Opens where you need it.** The class with the lesson running right now is selected automatically.
+- **Catch up on missed days** with ‹ and ›, as far back as EMIS allows.
+- **Checks its own work.** After saving it reads the journal back and marks every lesson ✓ or ✗, with EMIS's own error message when something was refused.
 
 **Download:** [tatomodrekilaze.github.io/Jurnali](https://tatomodrekilaze.github.io/Jurnali/)
 
@@ -19,19 +25,9 @@ Before writing anything it checks that the API responses look the way it expects
 
 `web/config.json` is fetched on every open. It can override API paths, disable the tool remotely (`"disabled": true`) or force an update (`"minVersion"`), so most breakages can be fixed without shipping a new APK.
 
-## API notes
+## How onlineschool works
 
-Everything lives under `/school-lms-back/resources/school/` and uses `Authorization: Bearer <access_token>` from the site's localStorage. Dates are `DD/MM/YYYY`.
-
-| What | Request |
-| --- | --- |
-| Today's lessons | `GET dashboard/schedule?date=` |
-| Lessons + pupils for a class group | `GET gradebook/classgroup/{id}/week?accessAs=TEACHER&startDate=&endDate=` |
-| Pupils of one lesson | `GET gradebook/{lessonId}/pupils` |
-| Mark absent | `POST gradebook/{lessonId}/pupils/{pupilId}/absence` |
-| Mark present again | `DELETE gradebook/{lessonId}/pupils/{pupilId}/absence` |
-
-Attendance defaults to present, so only absences are ever written.
+[docs/how-it-works.md](docs/how-it-works.md) covers the API, roles (teacher, homeroom teacher, director), the attendance edit window, excused absences and grades. [docs/endpoints.txt](docs/endpoints.txt) lists every endpoint the official web app calls.
 
 ## Development
 
