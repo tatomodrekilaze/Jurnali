@@ -63,9 +63,17 @@ class MainActivity : ComponentActivity() {
         webView.saveState(outState)
     }
 
+    // Pausing the WebView fires visibilitychange in the page, which is what the
+    // script listens to for renewing the session when the teacher comes back.
+    override fun onResume() {
+        super.onResume()
+        webView.onResume()
+    }
+
     override fun onPause() {
-        super.onPause()
+        webView.onPause()
         CookieManager.getInstance().flush()
+        super.onPause()
     }
 
     private inner class SiteClient : WebViewClient() {

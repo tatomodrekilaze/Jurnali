@@ -126,7 +126,104 @@
     if (missing.length) throw new ApiChanged(`${what}: missing ${missing.join(", ")}`);
   }
 
+  // --- session ---------------------------------------------------------------
+  //
+  // onlineschool hands out a 10-minute access token and a 30-minute refresh token
+  // (Keycloak on auth.emis.ge). The site only refreshes when it makes a request, so
+  // any break longer than half an hour logs the teacher out. We refresh the same way
+  // the site does, a little earlier, and keep doing it while the page is in front.
+
+  const REFRESH_PATH = "keycloak/refresh";
+  let refreshing = null;
+
+  function accessSecondsLeft() {
+    try {
+      const exp = new Date(localStorage.accessTokenExpirationDate).getTime();
+      return Number.isFinite(exp) ? (exp - Date.now()) / 1000 : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function refreshSecondsLeft() {
+    try {
+      const part = localStorage.getItem("refresh_token").split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const { exp } = JSON.parse(atob(part + "=".repeat((4 - (part.length % 4)) % 4)));
+      return exp - Date.now() / 1000;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  // Same request and same localStorage keys as the site's own HTTP interceptor,
+  // so both stay in sync whichever one refreshes first.
+  function refreshSession() {
+    refreshing ||= (async () => {
+      let refreshToken;
+      try {
+        refreshToken = localStorage.getItem("refresh_token");
+      } catch (_) {}
+      if (!refreshToken || refreshSecondsLeft() <= 0) return false;
+      try {
+        const res = await fetch(config.apiBase + REFRESH_PATH, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+          body: "refresh_token=" + encodeURIComponent(refreshToken),
+        });
+        if (!res.ok) return false;
+        const t = await res.json();
+        if (!t || !t.access_token || !t.refresh_token) return false;
+        localStorage.refresh_token = t.refresh_token;
+        localStorage.access_token = t.access_token;
+        localStorage.expires_in = t.expires_in;
+        localStorage.accessTokenExpirationDate = new Date(Date.now() + 1000 * t.expires_in).toString();
+        return true;
+      } catch (_) {
+        return false;
+      } finally {
+        refreshing = null;
+      }
+    })();
+    return refreshing;
+  }
+
+  async function ensureFreshToken(minSeconds) {
+    if (accessSecondsLeft() < minSeconds) await refreshSession();
+  }
+
+  // While the page is visible, renew a couple of minutes before the access token runs
+  // out; each renewal also resets the 30-minute idle clock on the refresh token.
+  // Phones pause timers in the background, so also renew as soon as we come back.
+  function keepSessionAlive() {
+    const tick = () => {
+      if (document.visibilityState === "visible" && readToken()) ensureFreshToken(120);
+    };
+    setInterval(tick, 60000);
+    document.addEventListener("visibilitychange", tick);
+    tick();
+  }
+
+  // The login page renders the password as type="text" with autocomplete="off"
+  // (their template only uses type="password" in dev mode), so no password manager
+  // ever offers to save it. Mark the fields properly and let the phone's own
+  // password manager handle it. Jurnali never reads the values.
+  function fixLoginForm() {
+    if (!location.pathname.startsWith("/auth")) return;
+    const user = document.querySelector('input[name="username"], input#userName');
+    const pass = document.querySelector('input[name="password"]#password');
+    if (user && user.getAttribute("autocomplete") !== "username") user.setAttribute("autocomplete", "username");
+    if (!pass || pass.dataset.jurnali) return;
+    pass.dataset.jurnali = "1";
+    pass.setAttribute("autocomplete", "current-password");
+    pass.type = "password";
+    // Their eye icon shows the password by flipping a CSS class, not the type,
+    // so follow it ourselves.
+    const eye = pass.parentElement && pass.parentElement.querySelector(".password-visible-icon");
+    if (eye) eye.addEventListener("click", () => setTimeout(() => (pass.type = pass.type === "password" ? "text" : "password")));
+  }
+
   async function request(method, path) {
+    await ensureFreshToken(30);
     const token = readToken();
     if (!token) throw new NotLoggedIn();
 
@@ -711,6 +808,7 @@
   let lastLoggedIn = null;
   function sync() {
     if (!document.body) return;
+    fixLoginForm();
     if (!host.isConnected) document.body.appendChild(host);
     const loggedIn = isLoggedIn();
     if (loggedIn === lastLoggedIn) return;
@@ -726,6 +824,7 @@
 
   sync();
   setInterval(sync, 1500);
+  keepSessionAlive();
 
-  window.Jurnali = { version: VERSION, open };
+  window.Jurnali = { version: VERSION, open, refreshSession };
 })();
